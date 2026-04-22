@@ -9,3 +9,27 @@ The primary users of this application are customers of quick-service restaurants
 **Proposed Solution**
 
 The proposed solution is a smart self-service ordering kiosk that monitors customer interaction patterns to identify signs of confusion. Instead of relying solely on static screens, the kiosk dynamically responds when customers appear stuck or unsure. By observing behaviors such as long pauses, repeated navigation between screens, and frequent item cancellations, the system determines when assistance may be helpful. When confusion is detected, the kiosk provides subtle guidance through prompts, recommendations, or the option to request staff support, improving usability without interrupting the ordering flow.
+
+---
+
+## Running (with FlatLaf Day/Night mode)
+
+This GUI uses [FlatLaf](https://www.formdev.com/flatlaf/) for modern Swing theming + a built-in Day/Night toggle.
+
+### Option A: Plain `javac` + downloaded jar (no build tool)
+
+1. Download the FlatLaf jar from Maven Central and place it in a `lib/` folder (for example `lib/flatlaf-3.x.jar`).
+2. Compile + run:
+
+```bash
+mkdir -p lib
+javac -cp "lib/*" MainGUI.java
+java -cp ".:lib/*" MainGUI
+```
+
+### Option B: Maven/Gradle dependency (if you add a build)
+
+- Maven:
+  - `com.formdev:flatlaf`
+- Gradle:
+  - `implementation("com.formdev:flatlaf:<version>")`
