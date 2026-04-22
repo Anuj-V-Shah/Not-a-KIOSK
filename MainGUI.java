@@ -34,6 +34,9 @@ public class MainGUI extends JFrame {
     private final Order order = new Order();
     private final Inventory inventory = new Inventory();
     private final SalesLedger salesLedger = new SalesLedger();
+    private final Icon sunIcon;
+    private final Icon moonIcon;
+    private static final int THEME_ICON_SIZE_PX = 48;
 
     private CardLayout cardLayout;
     private JPanel mainPanel;
@@ -50,8 +53,6 @@ public class MainGUI extends JFrame {
     private Color borderColor;
 
     private ThemeMode themeMode;
-    private JRadioButtonMenuItem dayMenuItem;
-    private JRadioButtonMenuItem nightMenuItem;
     private final Admin adminUser;
 
     public MainGUI(ThemeMode initialTheme) {
@@ -59,12 +60,13 @@ public class MainGUI extends JFrame {
         applyPalette(initialTheme);
         this.adminUser = new Admin(DEMO_ADMIN_USERNAME, "Manager", DEMO_ADMIN_PASSWORD);
         seedInventory();
+        this.sunIcon = loadScaledIcon("sun.png", THEME_ICON_SIZE_PX);
+        this.moonIcon = loadScaledIcon("moon.png", THEME_ICON_SIZE_PX);
 
         setTitle("Not-A-KIOSK");
         setSize(1000, 650);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
-        setJMenuBar(createMenuBar());
 
         cardLayout = new CardLayout();
         mainPanel = new JPanel(cardLayout);
@@ -183,48 +185,8 @@ public class MainGUI extends JFrame {
         rebuildCards();
         showView(currentView);
         SwingUtilities.updateComponentTreeUI(this);
-        if (dayMenuItem != null) dayMenuItem.setSelected(themeMode == ThemeMode.LIGHT);
-        if (nightMenuItem != null) nightMenuItem.setSelected(themeMode == ThemeMode.DARK);
         revalidate();
         repaint();
-    }
-
-    private JMenuBar createMenuBar() {
-        JMenuBar menuBar = new JMenuBar();
-
-        JMenu viewMenu = new JMenu("View");
-        JMenu themeMenu = new JMenu("Theme");
-
-        ButtonGroup group = new ButtonGroup();
-        dayMenuItem = new JRadioButtonMenuItem("Day (Light)");
-        nightMenuItem = new JRadioButtonMenuItem("Night (Dark)");
-        group.add(dayMenuItem);
-        group.add(nightMenuItem);
-
-        dayMenuItem.setSelected(themeMode == ThemeMode.LIGHT);
-        nightMenuItem.setSelected(themeMode == ThemeMode.DARK);
-
-        dayMenuItem.addActionListener(e -> setTheme(ThemeMode.LIGHT));
-        nightMenuItem.addActionListener(e -> setTheme(ThemeMode.DARK));
-
-        themeMenu.add(dayMenuItem);
-        themeMenu.add(nightMenuItem);
-
-        JMenuItem toggleItem = new JMenuItem("Toggle Day/Night");
-        toggleItem.setAccelerator(KeyStroke.getKeyStroke(
-                KeyEvent.VK_T,
-                Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()
-        ));
-        toggleItem.addActionListener(e ->
-                setTheme(themeMode == ThemeMode.DARK ? ThemeMode.LIGHT : ThemeMode.DARK)
-        );
-
-        viewMenu.add(themeMenu);
-        viewMenu.addSeparator();
-        viewMenu.add(toggleItem);
-
-        menuBar.add(viewMenu);
-        return menuBar;
     }
 
     private JPanel createHeaderPanel(String title, int verticalPadding, int fontSize) {
@@ -237,16 +199,49 @@ public class MainGUI extends JFrame {
         headerPanel.setBorder(BorderFactory.createEmptyBorder(verticalPadding, 20, verticalPadding, 20));
         headerPanel.add(titleLabel, BorderLayout.CENTER);
 
-        JToggleButton themeToggle = new JToggleButton(themeMode == ThemeMode.DARK ? "Night" : "Day");
+        Icon initialIcon = themeMode == ThemeMode.DARK ? moonIcon : sunIcon;
+        JToggleButton themeToggle = new JToggleButton(initialIcon);
         themeToggle.setSelected(themeMode == ThemeMode.DARK);
+        themeToggle.setText(null);
         themeToggle.setFocusPainted(false);
+        themeToggle.setBorderPainted(false);
+        themeToggle.setContentAreaFilled(false);
+        themeToggle.setOpaque(false);
+        themeToggle.setMargin(new Insets(0, 0, 0, 0));
+        themeToggle.setToolTipText(themeMode == ThemeMode.DARK ? "Night mode" : "Day mode");
+        themeToggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        int buttonSize = THEME_ICON_SIZE_PX + 14;
+        themeToggle.setPreferredSize(new Dimension(buttonSize, buttonSize));
         themeToggle.addItemListener(e -> {
-            themeToggle.setText(themeToggle.isSelected() ? "Night" : "Day");
-            setTheme(themeToggle.isSelected() ? ThemeMode.DARK : ThemeMode.LIGHT);
+            boolean dark = themeToggle.isSelected();
+            if (dark) {
+                if (moonIcon != null) themeToggle.setIcon(moonIcon);
+                themeToggle.setToolTipText("Night mode");
+                setTheme(ThemeMode.DARK);
+            } else {
+                if (sunIcon != null) themeToggle.setIcon(sunIcon);
+                themeToggle.setToolTipText("Day mode");
+                setTheme(ThemeMode.LIGHT);
+            }
         });
         headerPanel.add(themeToggle, BorderLayout.EAST);
 
         return headerPanel;
+    }
+
+    private static Icon loadScaledIcon(String fileName, int sizePx) {
+        ImageIcon icon = tryLoadIcon(fileName);
+        if (icon == null || icon.getIconWidth() <= 0) return null;
+        Image scaled = icon.getImage().getScaledInstance(sizePx, sizePx, Image.SCALE_SMOOTH);
+        return new ImageIcon(scaled);
+    }
+
+    private static ImageIcon tryLoadIcon(String fileName) {
+        java.net.URL url = MainGUI.class.getResource("/" + fileName);
+        if (url != null) return new ImageIcon(url);
+        java.io.File file = new java.io.File(fileName);
+        if (file.exists()) return new ImageIcon(fileName);
+        return null;
     }
 
     private JPanel createHomePanel() {
@@ -484,7 +479,7 @@ public class MainGUI extends JFrame {
         JLabel specialLabel = new JLabel("Instructions:");
         specialLabel.setForeground(textColor);
         JTextField specialField = new JTextField();
-        JButton applyNoteButton = createSecondaryButton("Apply");
+        specialField.setEnabled(false);
 
         inputGbc.gridx = 0;
         inputGbc.gridy = 0;
@@ -519,14 +514,9 @@ public class MainGUI extends JFrame {
         inputGbc.gridx = 1;
         inputGbc.gridy = 1;
         inputGbc.weightx = 1.0;
-        inputGbc.gridwidth = 3;
+        inputGbc.gridwidth = 4;
         inputPanel.add(specialField, inputGbc);
-
-        inputGbc.gridx = 4;
-        inputGbc.gridy = 1;
-        inputGbc.weightx = 0;
         inputGbc.gridwidth = 1;
-        inputPanel.add(applyNoteButton, inputGbc);
 
         JButton clearButton = createSecondaryButton("Clear");
         JButton checkoutButton = createStyledButton("Checkout");
@@ -573,6 +563,7 @@ public class MainGUI extends JFrame {
                 selectedValueLabel.setText(name);
                 qtySpinner.setValue(1);
                 specialField.setText("");
+                specialField.setEnabled(true);
                 addToOrderButton.setEnabled(true);
                 if (selectedButton[0] != null) {
                     selectedButton[0].setBorder(defaultMenuBorder);
@@ -600,7 +591,7 @@ public class MainGUI extends JFrame {
                 return;
             }
             MenuItem currentItem = inventory.getMenuItem(selectedItemName[0]);
-            order.addItem(currentItem, qty);
+            order.addItem(currentItem, qty, specialField.getText());
             inventory.adjustStock(selectedItemName[0], -qty);
             orderArea.setText(order.summary());
             JButton button = menuButtons.get(selectedItemName[0]);
@@ -614,11 +605,6 @@ public class MainGUI extends JFrame {
             }
         });
 
-        applyNoteButton.addActionListener(e -> {
-            order.setSpecialInstructions(specialField.getText());
-            orderArea.setText(order.summary());
-        });
-
         clearButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 for (java.util.Map.Entry<MenuItem, Integer> entry : order.getItemsView().entrySet()) {
@@ -626,6 +612,7 @@ public class MainGUI extends JFrame {
                 }
                 order.clear();
                 specialField.setText("");
+                specialField.setEnabled(false);
                 qtySpinner.setValue(1);
                 orderArea.setText(order.summary());
                 selectedItemName[0] = null;
@@ -664,6 +651,7 @@ public class MainGUI extends JFrame {
                 );
                 order.clear();
                 specialField.setText("");
+                specialField.setEnabled(false);
                 qtySpinner.setValue(1);
                 orderArea.setText(order.summary());
                 selectedItemName[0] = null;
@@ -673,6 +661,7 @@ public class MainGUI extends JFrame {
                     selectedButton[0].setBorder(defaultMenuBorder);
                     selectedButton[0] = null;
                 }
+                showView("HOME");
             }
         });
 
