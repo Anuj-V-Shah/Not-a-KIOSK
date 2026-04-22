@@ -24,6 +24,11 @@ public class MainGUI extends JFrame {
     private static final Preferences PREFS = Preferences.userNodeForPackage(MainGUI.class);
     private static final String PREF_KEY_THEME = "themeMode";
 
+    private static final String DEMO_ADMIN_USERNAME = "manager";
+    private static final char[] DEMO_ADMIN_PASSWORD = "password".toCharArray();
+
+    private final Order order = new Order();
+
     private CardLayout cardLayout;
     private JPanel mainPanel;
     private String currentView = "HOME";
@@ -41,10 +46,12 @@ public class MainGUI extends JFrame {
     private ThemeMode themeMode;
     private JRadioButtonMenuItem dayMenuItem;
     private JRadioButtonMenuItem nightMenuItem;
+    private final Admin adminUser;
 
     public MainGUI(ThemeMode initialTheme) {
         this.themeMode = initialTheme;
         applyPalette(initialTheme);
+        this.adminUser = new Admin(DEMO_ADMIN_USERNAME, "Manager", DEMO_ADMIN_PASSWORD);
 
         setTitle("Not-A-KIOSK");
         setSize(1000, 650);
@@ -219,7 +226,8 @@ public class MainGUI extends JFrame {
                 BorderFactory.createLineBorder(borderColor, 1),
                 BorderFactory.createEmptyBorder(30, 40, 30, 40)
         ));
-        cardPanel.setPreferredSize(new Dimension(500, 280));
+        // Don't force a small preferred size; it can clip components (like the Customer/Manager buttons).
+        cardPanel.setMinimumSize(new Dimension(500, 280));
 
         JLabel welcomeLabel = new JLabel("Main Menu");
         welcomeLabel.setFont(new Font("SansSerif", Font.BOLD, 28));
@@ -232,6 +240,16 @@ public class MainGUI extends JFrame {
         subText.setFont(new Font("SansSerif", Font.PLAIN, 18));
         subText.setForeground(textColor);
         subText.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel instructionsLabel = new JLabel("<html><div style='text-align: left;'>" +
+                "<b>Instructions</b><br>" +
+                "- Use the <b>Day/Night</b> toggle in the header or the View menu.<br>" +
+                "- Customer: select items, set Qty, optionally add Special notes.<br>" +
+                "- Manager: demo login is <b>manager</b> / <b>password</b>." +
+                "</div></html>");
+        instructionsLabel.setFont(new Font("SansSerif", Font.PLAIN, 16));
+        instructionsLabel.setForeground(textColor);
+        instructionsLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         JButton customerButton = createStyledButton("Customer");
         JButton managerButton = createStyledButton("Manager Login");
@@ -254,12 +272,19 @@ public class MainGUI extends JFrame {
         cardPanel.add(welcomeLabel);
         cardPanel.add(Box.createRigidArea(new Dimension(0, 25)));
         cardPanel.add(subText);
-        cardPanel.add(Box.createRigidArea(new Dimension(0, 35)));
+        cardPanel.add(Box.createRigidArea(new Dimension(0, 20)));
+        cardPanel.add(instructionsLabel);
+        cardPanel.add(Box.createRigidArea(new Dimension(0, 25)));
         cardPanel.add(customerButton);
         cardPanel.add(Box.createRigidArea(new Dimension(0, 15)));
         cardPanel.add(managerButton);
 
-        centerPanel.add(cardPanel);
+        GridBagConstraints homeGbc = new GridBagConstraints();
+        homeGbc.gridx = 0;
+        homeGbc.gridy = 0;
+        homeGbc.insets = new Insets(10, 10, 10, 10);
+        homeGbc.anchor = GridBagConstraints.CENTER;
+        centerPanel.add(cardPanel, homeGbc);
 
         panel.add(headerPanel, BorderLayout.NORTH);
         panel.add(centerPanel, BorderLayout.CENTER);
@@ -305,7 +330,7 @@ public class MainGUI extends JFrame {
         JButton loginButton = createStyledButton("Login");
         JButton backButton = createSecondaryButton("Back");
 
-        JLabel noteLabel = new JLabel("For now, login just opens the manager screen.");
+        JLabel noteLabel = new JLabel("Demo login: manager / password");
         noteLabel.setFont(new Font("SansSerif", Font.ITALIC, 14));
         noteLabel.setForeground(Color.GRAY);
 
@@ -340,7 +365,20 @@ public class MainGUI extends JFrame {
 
         loginButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                showView("MANAGER");
+                String username = usernameField.getText();
+                char[] password = passwordField.getPassword();
+                boolean ok = adminUser.authenticate(username, password);
+                passwordField.setText("");
+                if (ok && adminUser.canAccessManagerDashboard()) {
+                    showView("MANAGER");
+                } else {
+                    JOptionPane.showMessageDialog(
+                            MainGUI.this,
+                            "Invalid username or password.",
+                            "Login Failed",
+                            JOptionPane.ERROR_MESSAGE
+                    );
+                }
             }
         });
 
@@ -368,27 +406,10 @@ public class MainGUI extends JFrame {
         JPanel menuPanel = new JPanel(new GridLayout(4, 2, 15, 15));
         menuPanel.setBackground(backgroundColor);
 
-        String[] items = {
-                "Rainbow Bowl", "Spicy Tofu Bowl",
-                "Falafel Wrap", "Veggie Wrap",
-                "Green Smoothie", "Mango Smoothie",
-                "Vegan Brownie", "Chia Pudding"
-        };
-
-        for (int i = 0; i < items.length; i++) {
-            JButton itemButton = new JButton(items[i]);
-            itemButton.setFont(new Font("SansSerif", Font.BOLD, 18));
-            itemButton.setFocusPainted(false);
-            itemButton.setBackground(panelColor);
-            itemButton.setForeground(textColor);
-            itemButton.setPreferredSize(new Dimension(180, 80));
-            menuPanel.add(itemButton);
-        }
-
         JTextArea orderArea = new JTextArea();
         orderArea.setEditable(false);
         orderArea.setFont(new Font("SansSerif", Font.PLAIN, 17));
-        orderArea.setText("Order Summary\n\nSelect items to build the order later.");
+        orderArea.setText(order.summary());
         orderArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         orderArea.setBackground(panelColor);
         orderArea.setForeground(textColor);
@@ -403,6 +424,46 @@ public class MainGUI extends JFrame {
         summaryLabel.setFont(new Font("SansSerif", Font.BOLD, 20));
         summaryLabel.setForeground(textColor);
 
+        JPanel inputPanel = new JPanel(new GridBagLayout());
+        inputPanel.setBackground(backgroundColor);
+        GridBagConstraints inputGbc = new GridBagConstraints();
+        inputGbc.insets = new Insets(4, 4, 4, 4);
+        inputGbc.fill = GridBagConstraints.HORIZONTAL;
+
+        JLabel qtyLabel = new JLabel("Qty:");
+        qtyLabel.setForeground(textColor);
+        JSpinner qtySpinner = new JSpinner(new SpinnerNumberModel(1, 1, 20, 1));
+
+        JLabel specialLabel = new JLabel("Special:");
+        specialLabel.setForeground(textColor);
+        JTextField specialField = new JTextField();
+        JButton applyNoteButton = createSecondaryButton("Apply");
+
+        inputGbc.gridx = 0;
+        inputGbc.gridy = 0;
+        inputGbc.weightx = 0;
+        inputPanel.add(qtyLabel, inputGbc);
+
+        inputGbc.gridx = 1;
+        inputGbc.gridy = 0;
+        inputGbc.weightx = 1;
+        inputPanel.add(qtySpinner, inputGbc);
+
+        inputGbc.gridx = 0;
+        inputGbc.gridy = 1;
+        inputGbc.weightx = 0;
+        inputPanel.add(specialLabel, inputGbc);
+
+        inputGbc.gridx = 1;
+        inputGbc.gridy = 1;
+        inputGbc.weightx = 1;
+        inputPanel.add(specialField, inputGbc);
+
+        inputGbc.gridx = 2;
+        inputGbc.gridy = 1;
+        inputGbc.weightx = 0;
+        inputPanel.add(applyNoteButton, inputGbc);
+
         JButton clearButton = createSecondaryButton("Clear");
         JButton checkoutButton = createStyledButton("Checkout");
         JButton backButton = createSecondaryButton("Back");
@@ -413,15 +474,55 @@ public class MainGUI extends JFrame {
         buttonPanel.add(checkoutButton);
         buttonPanel.add(backButton);
 
+        // Core menu items (domain model) wired to the GUI.
+        MenuItem[] menuItems = new MenuItem[] {
+                new MenuItem("Rainbow Bowl", 1299),
+                new MenuItem("Spicy Tofu Bowl", 1399),
+                new MenuItem("Falafel Wrap", 999),
+                new MenuItem("Veggie Wrap", 949),
+                new MenuItem("Green Smoothie", 699),
+                new MenuItem("Mango Smoothie", 699),
+                new MenuItem("Vegan Brownie", 399),
+                new MenuItem("Chia Pudding", 499)
+        };
+
+        for (MenuItem item : menuItems) {
+            JButton itemButton = new JButton("<html><b>" + item.getName() + "</b><br>" + item.getFormattedPrice() + "</html>");
+            itemButton.setFont(new Font("SansSerif", Font.BOLD, 16));
+            itemButton.setFocusPainted(false);
+            itemButton.setBackground(panelColor);
+            itemButton.setForeground(textColor);
+            itemButton.setPreferredSize(new Dimension(180, 80));
+            itemButton.addActionListener(e -> {
+                int qty = (Integer) qtySpinner.getValue();
+                order.addItem(item, qty);
+                orderArea.setText(order.summary());
+            });
+            menuPanel.add(itemButton);
+        }
+
+        applyNoteButton.addActionListener(e -> {
+            order.setSpecialInstructions(specialField.getText());
+            orderArea.setText(order.summary());
+        });
+
         clearButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                orderArea.setText("Order Summary\n\nOrder cleared.");
+                order.clear();
+                specialField.setText("");
+                qtySpinner.setValue(1);
+                orderArea.setText(order.summary());
             }
         });
 
         checkoutButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                JOptionPane.showMessageDialog(null, "Checkout button clicked.");
+                JOptionPane.showMessageDialog(
+                        MainGUI.this,
+                        "Thanks! Your total is " + order.getFormattedTotal(),
+                        "Checkout",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
             }
         });
 
@@ -433,7 +534,12 @@ public class MainGUI extends JFrame {
 
         rightPanel.add(summaryLabel, BorderLayout.NORTH);
         rightPanel.add(scrollPane, BorderLayout.CENTER);
-        rightPanel.add(buttonPanel, BorderLayout.SOUTH);
+
+        JPanel southPanel = new JPanel(new BorderLayout(10, 10));
+        southPanel.setBackground(backgroundColor);
+        southPanel.add(inputPanel, BorderLayout.NORTH);
+        southPanel.add(buttonPanel, BorderLayout.SOUTH);
+        rightPanel.add(southPanel, BorderLayout.SOUTH);
 
         panel.add(headerPanel, BorderLayout.NORTH);
         panel.add(menuPanel, BorderLayout.CENTER);

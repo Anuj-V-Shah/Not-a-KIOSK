@@ -12,24 +12,15 @@ The proposed solution is a smart self-service ordering kiosk that monitors custo
 
 ---
 
-## Running (with FlatLaf Day/Night mode)
+## Running (FlatLaf + Day/Night mode)
 
-This GUI uses [FlatLaf](https://www.formdev.com/flatlaf/) for modern Swing theming + a built-in Day/Night toggle.
+This GUI uses FlatLaf for modern Swing theming + a built-in Day/Night toggle.
 
-### Option A: Plain `javac` + downloaded jar (no build tool)
+### Plain `javac` (no build tool)
 
-1. Download the FlatLaf jar from Maven Central and place it in a `lib/` folder (for example `lib/flatlaf-3.x.jar`).
-2. Compile + run:
+This repo includes FlatLaf at `flat/flatlaf-3.7.1.jar`.
 
 ```bash
-mkdir -p lib
-javac -cp "lib/*" MainGUI.java
-java -cp ".:lib/*" MainGUI
+javac -cp "flat/*" *.java
+java -cp ".:flat/*" MainGUI
 ```
-
-### Option B: Maven/Gradle dependency (if you add a build)
-
-- Maven:
-  - `com.formdev:flatlaf`
-- Gradle:
-  - `implementation("com.formdev:flatlaf:<version>")`
