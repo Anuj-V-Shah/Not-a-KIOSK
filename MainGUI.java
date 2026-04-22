@@ -1,8 +1,12 @@
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import javax.swing.*;
+import javax.swing.border.Border;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.prefs.Preferences;
 
 public class MainGUI extends JFrame {
@@ -28,6 +32,8 @@ public class MainGUI extends JFrame {
     private static final char[] DEMO_ADMIN_PASSWORD = "password".toCharArray();
 
     private final Order order = new Order();
+    private final Inventory inventory = new Inventory();
+    private final SalesLedger salesLedger = new SalesLedger();
 
     private CardLayout cardLayout;
     private JPanel mainPanel;
@@ -52,6 +58,7 @@ public class MainGUI extends JFrame {
         this.themeMode = initialTheme;
         applyPalette(initialTheme);
         this.adminUser = new Admin(DEMO_ADMIN_USERNAME, "Manager", DEMO_ADMIN_PASSWORD);
+        seedInventory();
 
         setTitle("Not-A-KIOSK");
         setSize(1000, 650);
@@ -66,6 +73,19 @@ public class MainGUI extends JFrame {
 
         add(mainPanel);
         showView("HOME");
+    }
+
+    private void seedInventory() {
+        // Seed once; keep state across theme rebuilds.
+        if (!inventory.getEntriesView().isEmpty()) return;
+        inventory.addItem("Rainbow Bowl", 1299, 25);
+        inventory.addItem("Spicy Tofu Bowl", 1399, 25);
+        inventory.addItem("Falafel Wrap", 999, 30);
+        inventory.addItem("Veggie Wrap", 949, 30);
+        inventory.addItem("Green Smoothie", 699, 40);
+        inventory.addItem("Mango Smoothie", 699, 40);
+        inventory.addItem("Vegan Brownie", 399, 50);
+        inventory.addItem("Chia Pudding", 499, 50);
     }
 
     private static ThemeMode loadThemePreference() {
@@ -116,7 +136,27 @@ public class MainGUI extends JFrame {
 
     private void showView(String name) {
         currentView = name;
+        // Inventory/prices can change in the Manager screen; rebuild so Customer view always reflects latest state.
+        if ("CUSTOMER".equals(name)) {
+            rebuildCards();
+        }
         cardLayout.show(mainPanel, name);
+    }
+
+    private static int parsePriceCents(String input) {
+        if (input == null) throw new IllegalArgumentException("price is required");
+        String normalized = input.trim().replace("$", "");
+        if (normalized.isBlank()) throw new IllegalArgumentException("price is required");
+        try {
+            BigDecimal dollars = new BigDecimal(normalized).setScale(2, RoundingMode.HALF_UP);
+            return dollars.movePointRight(2).intValueExact();
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid price. Use formats like 12.99 or 12", e);
+        }
+    }
+
+    private static String formatDollarsFromCents(int cents) {
+        return String.format("%.2f", cents / 100.0);
     }
 
     private void rebuildCards() {
@@ -430,11 +470,18 @@ public class MainGUI extends JFrame {
         inputGbc.insets = new Insets(4, 4, 4, 4);
         inputGbc.fill = GridBagConstraints.HORIZONTAL;
 
+        JLabel selectedLabel = new JLabel("Selected:");
+        selectedLabel.setForeground(textColor);
+        JLabel selectedValueLabel = new JLabel("(none)");
+        selectedValueLabel.setForeground(textColor);
+
         JLabel qtyLabel = new JLabel("Qty:");
         qtyLabel.setForeground(textColor);
         JSpinner qtySpinner = new JSpinner(new SpinnerNumberModel(1, 1, 20, 1));
+        JButton addToOrderButton = createStyledButton("Add to Order");
+        addToOrderButton.setEnabled(false);
 
-        JLabel specialLabel = new JLabel("Special:");
+        JLabel specialLabel = new JLabel("Instructions:");
         specialLabel.setForeground(textColor);
         JTextField specialField = new JTextField();
         JButton applyNoteButton = createSecondaryButton("Apply");
@@ -442,12 +489,27 @@ public class MainGUI extends JFrame {
         inputGbc.gridx = 0;
         inputGbc.gridy = 0;
         inputGbc.weightx = 0;
-        inputPanel.add(qtyLabel, inputGbc);
+        inputPanel.add(selectedLabel, inputGbc);
 
         inputGbc.gridx = 1;
         inputGbc.gridy = 0;
-        inputGbc.weightx = 1;
+        inputGbc.weightx = 1.0;
+        inputPanel.add(selectedValueLabel, inputGbc);
+
+        inputGbc.gridx = 2;
+        inputGbc.gridy = 0;
+        inputGbc.weightx = 0;
+        inputPanel.add(qtyLabel, inputGbc);
+
+        inputGbc.gridx = 3;
+        inputGbc.gridy = 0;
+        inputGbc.weightx = 0;
         inputPanel.add(qtySpinner, inputGbc);
+
+        inputGbc.gridx = 4;
+        inputGbc.gridy = 0;
+        inputGbc.weightx = 0;
+        inputPanel.add(addToOrderButton, inputGbc);
 
         inputGbc.gridx = 0;
         inputGbc.gridy = 1;
@@ -456,12 +518,14 @@ public class MainGUI extends JFrame {
 
         inputGbc.gridx = 1;
         inputGbc.gridy = 1;
-        inputGbc.weightx = 1;
+        inputGbc.weightx = 1.0;
+        inputGbc.gridwidth = 3;
         inputPanel.add(specialField, inputGbc);
 
-        inputGbc.gridx = 2;
+        inputGbc.gridx = 4;
         inputGbc.gridy = 1;
         inputGbc.weightx = 0;
+        inputGbc.gridwidth = 1;
         inputPanel.add(applyNoteButton, inputGbc);
 
         JButton clearButton = createSecondaryButton("Clear");
@@ -474,32 +538,81 @@ public class MainGUI extends JFrame {
         buttonPanel.add(checkoutButton);
         buttonPanel.add(backButton);
 
-        // Core menu items (domain model) wired to the GUI.
-        MenuItem[] menuItems = new MenuItem[] {
-                new MenuItem("Rainbow Bowl", 1299),
-                new MenuItem("Spicy Tofu Bowl", 1399),
-                new MenuItem("Falafel Wrap", 999),
-                new MenuItem("Veggie Wrap", 949),
-                new MenuItem("Green Smoothie", 699),
-                new MenuItem("Mango Smoothie", 699),
-                new MenuItem("Vegan Brownie", 399),
-                new MenuItem("Chia Pudding", 499)
+        java.util.Map<String, JButton> menuButtons = new java.util.HashMap<>();
+
+        java.util.function.BiConsumer<MenuItem, JButton> renderMenuButton = (menuItem, button) -> {
+            int stock = inventory.getStock(menuItem.getName());
+            if (stock <= 0) {
+                button.setText("<html><b>" + menuItem.getName() + "</b><br>" + menuItem.getFormattedPrice() +
+                        "<br><i>Sold out</i></html>");
+            } else {
+                button.setText("<html><b>" + menuItem.getName() + "</b><br>" + menuItem.getFormattedPrice() + "</html>");
+            }
+            button.setEnabled(stock > 0);
         };
 
-        for (MenuItem item : menuItems) {
-            JButton itemButton = new JButton("<html><b>" + item.getName() + "</b><br>" + item.getFormattedPrice() + "</html>");
+        final String[] selectedItemName = new String[] { null };
+        final JButton[] selectedButton = new JButton[] { null };
+        final Border defaultMenuBorder = BorderFactory.createLineBorder(borderColor, 1);
+        final Border selectedMenuBorder = BorderFactory.createLineBorder(buttonColor, 3);
+
+        for (Inventory.Entry entry : inventory.getEntriesView()) {
+            MenuItem item = entry.getMenuItem();
+            JButton itemButton = new JButton();
             itemButton.setFont(new Font("SansSerif", Font.BOLD, 16));
             itemButton.setFocusPainted(false);
             itemButton.setBackground(panelColor);
             itemButton.setForeground(textColor);
             itemButton.setPreferredSize(new Dimension(180, 80));
+            itemButton.setBorder(defaultMenuBorder);
+            renderMenuButton.accept(item, itemButton);
+            menuButtons.put(item.getName(), itemButton);
             itemButton.addActionListener(e -> {
-                int qty = (Integer) qtySpinner.getValue();
-                order.addItem(item, qty);
-                orderArea.setText(order.summary());
+                String name = item.getName();
+                selectedItemName[0] = name;
+                selectedValueLabel.setText(name);
+                qtySpinner.setValue(1);
+                specialField.setText("");
+                addToOrderButton.setEnabled(true);
+                if (selectedButton[0] != null) {
+                    selectedButton[0].setBorder(defaultMenuBorder);
+                }
+                selectedButton[0] = itemButton;
+                itemButton.setBorder(selectedMenuBorder);
             });
             menuPanel.add(itemButton);
         }
+
+        addToOrderButton.addActionListener(e -> {
+            if (selectedItemName[0] == null) {
+                JOptionPane.showMessageDialog(MainGUI.this, "Select an item first.");
+                return;
+            }
+            int qty = (Integer) qtySpinner.getValue();
+            int available = inventory.getStock(selectedItemName[0]);
+            if (qty > available) {
+                JOptionPane.showMessageDialog(
+                        MainGUI.this,
+                        "Not enough stock. Available: " + available,
+                        "Out of Stock",
+                        JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+            MenuItem currentItem = inventory.getMenuItem(selectedItemName[0]);
+            order.addItem(currentItem, qty);
+            inventory.adjustStock(selectedItemName[0], -qty);
+            orderArea.setText(order.summary());
+            JButton button = menuButtons.get(selectedItemName[0]);
+            if (button != null) {
+                renderMenuButton.accept(inventory.getMenuItem(selectedItemName[0]), button);
+            }
+            qtySpinner.setValue(1);
+            specialField.setText("");
+            if (inventory.getStock(selectedItemName[0]) <= 0) {
+                addToOrderButton.setEnabled(false);
+            }
+        });
 
         applyNoteButton.addActionListener(e -> {
             order.setSpecialInstructions(specialField.getText());
@@ -508,21 +621,58 @@ public class MainGUI extends JFrame {
 
         clearButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
+                for (java.util.Map.Entry<MenuItem, Integer> entry : order.getItemsView().entrySet()) {
+                    inventory.adjustStock(entry.getKey().getName(), entry.getValue());
+                }
                 order.clear();
                 specialField.setText("");
                 qtySpinner.setValue(1);
                 orderArea.setText(order.summary());
+                selectedItemName[0] = null;
+                selectedValueLabel.setText("(none)");
+                addToOrderButton.setEnabled(false);
+                if (selectedButton[0] != null) {
+                    selectedButton[0].setBorder(defaultMenuBorder);
+                    selectedButton[0] = null;
+                }
+                for (Inventory.Entry invEntry : inventory.getEntriesView()) {
+                    JButton button = menuButtons.get(invEntry.getName());
+                    if (button != null) {
+                        renderMenuButton.accept(invEntry.getMenuItem(), button);
+                    }
+                }
             }
         });
 
         checkoutButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
+                if (order.getItemsView().isEmpty()) {
+                    JOptionPane.showMessageDialog(
+                            MainGUI.this,
+                            "Add at least one item before checkout.",
+                            "Nothing to Checkout",
+                            JOptionPane.WARNING_MESSAGE
+                    );
+                    return;
+                }
+                salesLedger.recordCompletedOrder(order);
                 JOptionPane.showMessageDialog(
                         MainGUI.this,
                         "Thanks! Your total is " + order.getFormattedTotal(),
                         "Checkout",
                         JOptionPane.INFORMATION_MESSAGE
                 );
+                order.clear();
+                specialField.setText("");
+                qtySpinner.setValue(1);
+                orderArea.setText(order.summary());
+                selectedItemName[0] = null;
+                selectedValueLabel.setText("(none)");
+                addToOrderButton.setEnabled(false);
+                if (selectedButton[0] != null) {
+                    selectedButton[0].setBorder(defaultMenuBorder);
+                    selectedButton[0] = null;
+                }
             }
         });
 
@@ -554,42 +704,217 @@ public class MainGUI extends JFrame {
 
         JPanel headerPanel = createHeaderPanel("Manager Dashboard", 20, 30);
 
-        JPanel centerPanel = new JPanel(new GridBagLayout());
+        JPanel centerPanel = new JPanel(new BorderLayout(15, 15));
         centerPanel.setBackground(backgroundColor);
+        centerPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
-        JTextArea managerArea = new JTextArea();
-        managerArea.setEditable(false);
-        managerArea.setFont(new Font("SansSerif", Font.PLAIN, 18));
-        managerArea.setText(
-                "Welcome to the Manager Dashboard.\n\n" +
-                "This screen is a draft.\n\n" +
-                "Later you can add:\n" +
-                "- View inventory\n" +
-                "- Update menu\n" +
-                "- Check orders"
-        );
-        managerArea.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(borderColor, 1),
-                BorderFactory.createEmptyBorder(20, 20, 20, 20)
-        ));
-        managerArea.setBackground(panelColor);
-        managerArea.setForeground(textColor);
+        JLabel inventoryLabel = new JLabel("Inventory / Prices");
+        inventoryLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
+        inventoryLabel.setForeground(textColor);
 
-        JPanel contentPanel = new JPanel(new BorderLayout());
-        contentPanel.setPreferredSize(new Dimension(500, 280));
-        contentPanel.setBackground(backgroundColor);
-        contentPanel.add(managerArea, BorderLayout.CENTER);
+        DefaultTableModel inventoryModel = new DefaultTableModel(new Object[] {"Item", "Price", "Stock"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        JTable inventoryTable = new JTable(inventoryModel);
+        inventoryTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        JScrollPane inventoryScroll = new JScrollPane(inventoryTable);
+        inventoryScroll.setPreferredSize(new Dimension(520, 360));
+
+        java.util.function.Supplier<String> getSelectedItemName = () -> {
+            int row = inventoryTable.getSelectedRow();
+            if (row < 0) return null;
+            return String.valueOf(inventoryModel.getValueAt(row, 0));
+        };
+
+        java.util.function.Consumer<String> refreshInventoryTable = (keepSelectedName) -> {
+            inventoryModel.setRowCount(0);
+            for (Inventory.Entry entry : inventory.getEntriesView()) {
+                MenuItem item = entry.getMenuItem();
+                inventoryModel.addRow(new Object[] {
+                        entry.getName(),
+                        item.getFormattedPrice(),
+                        entry.getStock()
+                });
+            }
+            if (keepSelectedName != null) {
+                for (int i = 0; i < inventoryModel.getRowCount(); i++) {
+                    String name = String.valueOf(inventoryModel.getValueAt(i, 0));
+                    if (keepSelectedName.equals(name)) {
+                        inventoryTable.setRowSelectionInterval(i, i);
+                        inventoryTable.scrollRectToVisible(inventoryTable.getCellRect(i, 0, true));
+                        break;
+                    }
+                }
+            }
+        };
+        refreshInventoryTable.accept(null);
+
+        JPanel inventoryControls = new JPanel(new GridBagLayout());
+        inventoryControls.setBackground(backgroundColor);
+        GridBagConstraints igbc = new GridBagConstraints();
+        igbc.insets = new Insets(6, 6, 6, 6);
+        igbc.fill = GridBagConstraints.HORIZONTAL;
+        igbc.weightx = 1;
+
+        JLabel stockDeltaLabel = new JLabel("Stock Δ:");
+        stockDeltaLabel.setForeground(textColor);
+        JSpinner stockDeltaSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 500, 1));
+        JButton addStockButton = createSecondaryButton("Add Stock");
+        JButton removeStockButton = createSecondaryButton("Remove Stock");
+
+        JLabel priceLabel = new JLabel("New Price ($):");
+        priceLabel.setForeground(textColor);
+        JTextField priceField = new JTextField();
+        JButton setPriceButton = createStyledButton("Set Price");
+
+        igbc.gridx = 0;
+        igbc.gridy = 0;
+        igbc.weightx = 0;
+        inventoryControls.add(stockDeltaLabel, igbc);
+        igbc.gridx = 1;
+        igbc.gridy = 0;
+        igbc.weightx = 1;
+        inventoryControls.add(stockDeltaSpinner, igbc);
+        igbc.gridx = 2;
+        igbc.gridy = 0;
+        igbc.weightx = 0;
+        inventoryControls.add(addStockButton, igbc);
+        igbc.gridx = 3;
+        igbc.gridy = 0;
+        inventoryControls.add(removeStockButton, igbc);
+
+        igbc.gridx = 0;
+        igbc.gridy = 1;
+        igbc.weightx = 0;
+        inventoryControls.add(priceLabel, igbc);
+        igbc.gridx = 1;
+        igbc.gridy = 1;
+        igbc.weightx = 1;
+        inventoryControls.add(priceField, igbc);
+        igbc.gridx = 2;
+        igbc.gridy = 1;
+        igbc.gridwidth = 2;
+        igbc.weightx = 0;
+        inventoryControls.add(setPriceButton, igbc);
+        igbc.gridwidth = 1;
+
+        JButton refreshButton = createSecondaryButton("Refresh");
+        igbc.gridx = 0;
+        igbc.gridy = 2;
+        igbc.gridwidth = 4;
+        inventoryControls.add(refreshButton, igbc);
+        igbc.gridwidth = 1;
+
+        JPanel inventoryPanel = new JPanel(new BorderLayout(10, 10));
+        inventoryPanel.setBackground(backgroundColor);
+        inventoryPanel.add(inventoryLabel, BorderLayout.NORTH);
+        inventoryPanel.add(inventoryScroll, BorderLayout.CENTER);
+        inventoryPanel.add(inventoryControls, BorderLayout.SOUTH);
+
+        JLabel salesLabel = new JLabel("Sales Summary");
+        salesLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
+        salesLabel.setForeground(textColor);
+
+        JTextArea salesArea = new JTextArea();
+        salesArea.setEditable(false);
+        salesArea.setFont(new Font("SansSerif", Font.PLAIN, 15));
+        salesArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        salesArea.setBackground(panelColor);
+        salesArea.setForeground(textColor);
+        salesArea.setText(salesLedger.summary());
+
+        JScrollPane salesScroll = new JScrollPane(salesArea);
+        salesScroll.setPreferredSize(new Dimension(360, 360));
+
+        JButton refreshSalesButton = createSecondaryButton("Refresh Sales");
+        JButton resetSalesButton = createSecondaryButton("Reset Sales");
+
+        JPanel salesButtons = new JPanel(new GridLayout(1, 2, 10, 10));
+        salesButtons.setBackground(backgroundColor);
+        salesButtons.add(refreshSalesButton);
+        salesButtons.add(resetSalesButton);
+
+        JPanel salesPanel = new JPanel(new BorderLayout(10, 10));
+        salesPanel.setBackground(backgroundColor);
+        salesPanel.add(salesLabel, BorderLayout.NORTH);
+        salesPanel.add(salesScroll, BorderLayout.CENTER);
+        salesPanel.add(salesButtons, BorderLayout.SOUTH);
+
+        JPanel mainContent = new JPanel(new BorderLayout(15, 15));
+        mainContent.setBackground(backgroundColor);
+        mainContent.add(inventoryPanel, BorderLayout.CENTER);
+        mainContent.add(salesPanel, BorderLayout.EAST);
 
         JButton logoutButton = createSecondaryButton("Logout");
-        contentPanel.add(logoutButton, BorderLayout.SOUTH);
 
-        logoutButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                showView("HOME");
-            }
+        refreshButton.addActionListener(e -> refreshInventoryTable.accept(getSelectedItemName.get()));
+        refreshSalesButton.addActionListener(e -> salesArea.setText(salesLedger.summary()));
+        resetSalesButton.addActionListener(e -> {
+            salesLedger.reset();
+            salesArea.setText(salesLedger.summary());
         });
 
-        centerPanel.add(contentPanel);
+        inventoryTable.getSelectionModel().addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting()) return;
+            int row = inventoryTable.getSelectedRow();
+            if (row < 0) return;
+            String itemName = String.valueOf(inventoryModel.getValueAt(row, 0));
+            MenuItem item = inventory.getMenuItem(itemName);
+            priceField.setText(formatDollarsFromCents(item.getPriceCents()));
+        });
+
+        addStockButton.addActionListener(e -> {
+            int row = inventoryTable.getSelectedRow();
+            if (row < 0) {
+                JOptionPane.showMessageDialog(MainGUI.this, "Select an item first.");
+                return;
+            }
+            String itemName = String.valueOf(inventoryModel.getValueAt(row, 0));
+            int delta = (Integer) stockDeltaSpinner.getValue();
+            inventory.adjustStock(itemName, delta);
+            refreshInventoryTable.accept(itemName);
+        });
+
+        removeStockButton.addActionListener(e -> {
+            int row = inventoryTable.getSelectedRow();
+            if (row < 0) {
+                JOptionPane.showMessageDialog(MainGUI.this, "Select an item first.");
+                return;
+            }
+            String itemName = String.valueOf(inventoryModel.getValueAt(row, 0));
+            int delta = (Integer) stockDeltaSpinner.getValue();
+            try {
+                inventory.adjustStock(itemName, -delta);
+            } catch (IllegalArgumentException ex) {
+                JOptionPane.showMessageDialog(MainGUI.this, ex.getMessage(), "Cannot Remove Stock", JOptionPane.WARNING_MESSAGE);
+            }
+            refreshInventoryTable.accept(itemName);
+        });
+
+        setPriceButton.addActionListener(e -> {
+            int row = inventoryTable.getSelectedRow();
+            if (row < 0) {
+                JOptionPane.showMessageDialog(MainGUI.this, "Select an item first.");
+                return;
+            }
+            String itemName = String.valueOf(inventoryModel.getValueAt(row, 0));
+            try {
+                int cents = parsePriceCents(priceField.getText());
+                inventory.setPriceCents(itemName, cents);
+            } catch (IllegalArgumentException ex) {
+                JOptionPane.showMessageDialog(MainGUI.this, ex.getMessage(), "Invalid Price", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            refreshInventoryTable.accept(itemName);
+        });
+
+        logoutButton.addActionListener(e -> showView("HOME"));
+
+        centerPanel.add(mainContent, BorderLayout.CENTER);
+        centerPanel.add(logoutButton, BorderLayout.SOUTH);
 
         panel.add(headerPanel, BorderLayout.NORTH);
         panel.add(centerPanel, BorderLayout.CENTER);
