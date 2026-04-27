@@ -37,6 +37,7 @@ public class MainGUI extends JFrame {
     private final Icon sunIcon;
     private final Icon moonIcon;
     private static final int THEME_ICON_SIZE_PX = 48;
+    private final Image welcomeBackgroundImage;
 
     private CardLayout cardLayout;
     private JPanel mainPanel;
@@ -62,6 +63,7 @@ public class MainGUI extends JFrame {
         seedInventory();
         this.sunIcon = loadScaledIcon("sun.png", THEME_ICON_SIZE_PX);
         this.moonIcon = loadScaledIcon("moon.png", THEME_ICON_SIZE_PX);
+        this.welcomeBackgroundImage = tryLoadImage("bg1.png");
 
         setTitle("Not-A-KIOSK");
         setSize(1000, 650);
@@ -199,6 +201,12 @@ public class MainGUI extends JFrame {
         headerPanel.setBorder(BorderFactory.createEmptyBorder(verticalPadding, 20, verticalPadding, 20));
         headerPanel.add(titleLabel, BorderLayout.CENTER);
 
+        headerPanel.add(createThemeToggleButton(), BorderLayout.EAST);
+
+        return headerPanel;
+    }
+
+    private JToggleButton createThemeToggleButton() {
         Icon initialIcon = themeMode == ThemeMode.DARK ? moonIcon : sunIcon;
         JToggleButton themeToggle = new JToggleButton(initialIcon);
         themeToggle.setSelected(themeMode == ThemeMode.DARK);
@@ -224,9 +232,7 @@ public class MainGUI extends JFrame {
                 setTheme(ThemeMode.LIGHT);
             }
         });
-        headerPanel.add(themeToggle, BorderLayout.EAST);
-
-        return headerPanel;
+        return themeToggle;
     }
 
     private static Icon loadScaledIcon(String fileName, int sizePx) {
@@ -244,84 +250,164 @@ public class MainGUI extends JFrame {
         return null;
     }
 
+    private static Image tryLoadImage(String fileName) {
+        ImageIcon icon = tryLoadIcon(fileName);
+        if (icon == null) return null;
+        Image img = icon.getImage();
+        return img == null ? null : img;
+    }
+
+    private static final class ImageBackgroundPanel extends JPanel {
+        private final Image image;
+        private final float alpha;
+
+        private ImageBackgroundPanel(Image image, float alpha) {
+            this.image = image;
+            this.alpha = alpha;
+            setOpaque(true);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g); // paints base color (white/black) first
+            if (image == null) return;
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+
+                int panelW = getWidth();
+                int panelH = getHeight();
+                int imgW = image.getWidth(this);
+                int imgH = image.getHeight(this);
+                if (imgW <= 0 || imgH <= 0 || panelW <= 0 || panelH <= 0) return;
+
+                // Cover the full panel while preserving aspect ratio (like CSS background-size: cover).
+                double scale = Math.max(panelW / (double) imgW, panelH / (double) imgH);
+                int drawW = (int) Math.ceil(imgW * scale);
+                int drawH = (int) Math.ceil(imgH * scale);
+                int x = (panelW - drawW) / 2;
+                int y = (panelH - drawH) / 2;
+                g2.drawImage(image, x, y, drawW, drawH, this);
+            } finally {
+                g2.dispose();
+            }
+        }
+    }
+
     private JPanel createHomePanel() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBackground(backgroundColor);
 
-        JPanel headerPanel = createHeaderPanel("Welcome to Not-A-KIOSK", 25, 34);
+        float bgAlpha = themeMode == ThemeMode.DARK ? 0.16f : 0.22f;
+        JPanel centerPanel = new ImageBackgroundPanel(welcomeBackgroundImage, bgAlpha);
+        centerPanel.setLayout(new BorderLayout());
+        centerPanel.setBackground(backgroundColor); // base layer (white/black)
 
-        JPanel centerPanel = new JPanel();
-        centerPanel.setBackground(backgroundColor);
-        centerPanel.setLayout(new GridBagLayout());
+        JPanel topRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        topRight.setOpaque(false);
+        topRight.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 15));
+        topRight.add(createThemeToggleButton());
 
-        JPanel cardPanel = new JPanel();
-        cardPanel.setBackground(panelColor);
-        cardPanel.setLayout(new BoxLayout(cardPanel, BoxLayout.Y_AXIS));
-        cardPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(borderColor, 1),
-                BorderFactory.createEmptyBorder(30, 40, 30, 40)
-        ));
-        // Don't force a small preferred size; it can clip components (like the Customer/Manager buttons).
-        cardPanel.setMinimumSize(new Dimension(500, 280));
+        JPanel tapPanel = new JPanel();
+        // Match the background so it feels like a full-screen "tap to order" prompt (no white box).
+        tapPanel.setOpaque(false);
+        tapPanel.setBorder(BorderFactory.createEmptyBorder(60, 40, 60, 40));
+        tapPanel.setLayout(new BoxLayout(tapPanel, BoxLayout.Y_AXIS));
 
-        JLabel welcomeLabel = new JLabel("Main Menu");
-        welcomeLabel.setFont(new Font("SansSerif", Font.BOLD, 28));
-        welcomeLabel.setForeground(textColor);
-        welcomeLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel paymentLabel = new JLabel("CREDIT  •  DEBIT  •  GIFT CARD", SwingConstants.CENTER);
+        paymentLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        paymentLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+        paymentLabel.setForeground(textColor);
 
-        JLabel subText = new JLabel("<html><div style='text-align: center;'>Choose how you want to use the kiosk.<br><br>" +
-                "Customer: browse menu and place an order.<br>" +
-                "Manager: sign in to access admin features.</div></html>");
-        subText.setFont(new Font("SansSerif", Font.PLAIN, 18));
-        subText.setForeground(textColor);
-        subText.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel cashLabel = new JLabel("CASH NOT ACCEPTED", SwingConstants.CENTER);
+        cashLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        cashLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        cashLabel.setForeground(new Color(120, 120, 120));
 
-        JLabel instructionsLabel = new JLabel("<html><div style='text-align: left;'>" +
-                "<b>Instructions</b><br>" +
-                "- Use the <b>Day/Night</b> toggle in the header or the View menu.<br>" +
-                "- Customer: select items, set Qty, optionally add Special notes.<br>" +
-                "- Manager: demo login is <b>manager</b> / <b>password</b>." +
-                "</div></html>");
-        instructionsLabel.setFont(new Font("SansSerif", Font.PLAIN, 16));
-        instructionsLabel.setForeground(textColor);
-        instructionsLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel tapLabel = new JLabel("TAP TO ORDER", SwingConstants.CENTER);
+        tapLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        tapLabel.setFont(new Font("SansSerif", Font.BOLD, 84));
+        tapLabel.setForeground(buttonColor);
 
-        JButton customerButton = createStyledButton("Customer");
-        JButton managerButton = createStyledButton("Manager Login");
+        JLabel hintLabel = new JLabel("Tap anywhere to begin", SwingConstants.CENTER);
+        hintLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        hintLabel.setFont(new Font("SansSerif", Font.PLAIN, 18));
+        hintLabel.setForeground(textColor);
 
-        customerButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        managerButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        tapPanel.add(paymentLabel);
+        tapPanel.add(Box.createRigidArea(new Dimension(0, 6)));
+        tapPanel.add(cashLabel);
+        tapPanel.add(Box.createRigidArea(new Dimension(0, 28)));
+        tapPanel.add(tapLabel);
+        tapPanel.add(Box.createRigidArea(new Dimension(0, 16)));
+        tapPanel.add(hintLabel);
 
-        customerButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
+        MouseAdapter tapToOrder = new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
                 showView("CUSTOMER");
             }
-        });
+        };
+        tapPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        centerPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        tapPanel.addMouseListener(tapToOrder);
+        tapLabel.addMouseListener(tapToOrder);
+        hintLabel.addMouseListener(tapToOrder);
+        paymentLabel.addMouseListener(tapToOrder);
+        cashLabel.addMouseListener(tapToOrder);
 
-        managerButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                showView("LOGIN");
-            }
-        });
+        JPanel tapContainer = new JPanel(new GridBagLayout());
+        tapContainer.setOpaque(false);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 1.0;
+        gbc.weighty = 1.0;
+        gbc.insets = new Insets(20, 20, 20, 20);
+        gbc.anchor = GridBagConstraints.CENTER;
+        gbc.fill = GridBagConstraints.NONE;
+        tapContainer.add(tapPanel, gbc);
+        tapContainer.addMouseListener(tapToOrder);
+        centerPanel.addMouseListener(tapToOrder);
 
-        cardPanel.add(welcomeLabel);
-        cardPanel.add(Box.createRigidArea(new Dimension(0, 25)));
-        cardPanel.add(subText);
-        cardPanel.add(Box.createRigidArea(new Dimension(0, 20)));
-        cardPanel.add(instructionsLabel);
-        cardPanel.add(Box.createRigidArea(new Dimension(0, 25)));
-        cardPanel.add(customerButton);
-        cardPanel.add(Box.createRigidArea(new Dimension(0, 15)));
-        cardPanel.add(managerButton);
+        JButton helpButton = createSecondaryButton("Help");
+        helpButton.setPreferredSize(new Dimension(140, 44));
+        helpButton.addActionListener(e -> JOptionPane.showMessageDialog(
+                MainGUI.this,
+                "How to use the kiosk:\n\n" +
+                        "1) Tap anywhere to begin ordering\n" +
+                        "2) Select an item, choose Qty, add optional instructions\n" +
+                        "3) Add to Order, then Checkout\n\n" +
+                        "Manager login demo:\n" +
+                        "Username: manager\n" +
+                        "Password: password",
+                "Help",
+                JOptionPane.INFORMATION_MESSAGE
+        ));
 
-        GridBagConstraints homeGbc = new GridBagConstraints();
-        homeGbc.gridx = 0;
-        homeGbc.gridy = 0;
-        homeGbc.insets = new Insets(10, 10, 10, 10);
-        homeGbc.anchor = GridBagConstraints.CENTER;
-        centerPanel.add(cardPanel, homeGbc);
+        JButton managerButton = createSecondaryButton("Manager Login");
+        managerButton.setPreferredSize(new Dimension(180, 44));
+        managerButton.addActionListener(e -> showView("LOGIN"));
 
-        panel.add(headerPanel, BorderLayout.NORTH);
+        JPanel bottomBar = new JPanel(new BorderLayout());
+        bottomBar.setOpaque(false);
+        bottomBar.setBorder(BorderFactory.createEmptyBorder(0, 15, 15, 15));
+        bottomBar.addMouseListener(tapToOrder);
+
+        JPanel bottomLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        bottomLeft.setOpaque(false);
+        bottomLeft.add(helpButton);
+        bottomBar.add(bottomLeft, BorderLayout.WEST);
+
+        JPanel bottomRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        bottomRight.setOpaque(false);
+        bottomRight.add(managerButton);
+        bottomBar.add(bottomRight, BorderLayout.EAST);
+
+        centerPanel.add(tapContainer, BorderLayout.CENTER);
+        centerPanel.add(topRight, BorderLayout.NORTH);
+        centerPanel.add(bottomBar, BorderLayout.SOUTH);
         panel.add(centerPanel, BorderLayout.CENTER);
 
         return panel;
