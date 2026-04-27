@@ -34,8 +34,10 @@ public class MainGUI extends JFrame {
     private final Order order = new Order();
     private final Inventory inventory = new Inventory();
     private final SalesLedger salesLedger = new SalesLedger();
-    private final Icon sunIcon;
-    private final Icon moonIcon;
+    private final Icon sunBlackIcon;
+    private final Icon sunWhiteIcon;
+    private final Icon moonBlackIcon;
+    private final Icon moonWhiteIcon;
     private static final int THEME_ICON_SIZE_PX = 48;
     private final Image welcomeBackgroundImage;
 
@@ -61,8 +63,10 @@ public class MainGUI extends JFrame {
         applyPalette(initialTheme);
         this.adminUser = new Admin(DEMO_ADMIN_USERNAME, "Manager", DEMO_ADMIN_PASSWORD);
         seedInventory();
-        this.sunIcon = loadScaledIcon("sun.png", THEME_ICON_SIZE_PX);
-        this.moonIcon = loadScaledIcon("moon.png", THEME_ICON_SIZE_PX);
+        this.sunBlackIcon = loadScaledIcon("sun_black.png", THEME_ICON_SIZE_PX);
+        this.sunWhiteIcon = loadScaledIcon("sun_white.png", THEME_ICON_SIZE_PX);
+        this.moonBlackIcon = loadScaledIcon("moon_black.png", THEME_ICON_SIZE_PX);
+        this.moonWhiteIcon = loadScaledIcon("moon_white.png", THEME_ICON_SIZE_PX);
         this.welcomeBackgroundImage = tryLoadImage("bg1.png");
 
         setTitle("Not-A-KIOSK");
@@ -201,13 +205,19 @@ public class MainGUI extends JFrame {
         headerPanel.setBorder(BorderFactory.createEmptyBorder(verticalPadding, 20, verticalPadding, 20));
         headerPanel.add(titleLabel, BorderLayout.CENTER);
 
-        headerPanel.add(createThemeToggleButton(), BorderLayout.EAST);
+        headerPanel.add(createThemeToggleButton(false), BorderLayout.EAST);
 
         return headerPanel;
     }
 
-    private JToggleButton createThemeToggleButton() {
-        Icon initialIcon = themeMode == ThemeMode.DARK ? moonIcon : sunIcon;
+    private JToggleButton createThemeToggleButton(boolean isHomeScreen) {
+        // Per request:
+        // - Home: black sun (light), white moon (dark)
+        // - Other screens: white sun (light), black moon (dark)
+        Icon sun = isHomeScreen ? sunBlackIcon : sunWhiteIcon;
+        Icon moon = isHomeScreen ? moonWhiteIcon : moonBlackIcon;
+
+        Icon initialIcon = themeMode == ThemeMode.DARK ? moon : sun;
         JToggleButton themeToggle = new JToggleButton(initialIcon);
         themeToggle.setSelected(themeMode == ThemeMode.DARK);
         themeToggle.setText(null);
@@ -223,11 +233,11 @@ public class MainGUI extends JFrame {
         themeToggle.addItemListener(e -> {
             boolean dark = themeToggle.isSelected();
             if (dark) {
-                if (moonIcon != null) themeToggle.setIcon(moonIcon);
+                if (moon != null) themeToggle.setIcon(moon);
                 themeToggle.setToolTipText("Night mode");
                 setTheme(ThemeMode.DARK);
             } else {
-                if (sunIcon != null) themeToggle.setIcon(sunIcon);
+                if (sun != null) themeToggle.setIcon(sun);
                 themeToggle.setToolTipText("Day mode");
                 setTheme(ThemeMode.LIGHT);
             }
@@ -307,7 +317,7 @@ public class MainGUI extends JFrame {
         JPanel topRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         topRight.setOpaque(false);
         topRight.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 15));
-        topRight.add(createThemeToggleButton());
+        topRight.add(createThemeToggleButton(true));
 
         JPanel tapPanel = new JPanel();
         // Match the background so it feels like a full-screen "tap to order" prompt (no white box).
