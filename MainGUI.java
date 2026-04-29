@@ -44,7 +44,7 @@ public class MainGUI extends JFrame {
     private CardLayout cardLayout;
     private JPanel mainPanel;
     private String currentView = "HOME";
-
+  // nothing man
     // Colors
     private Color backgroundColor;
     private Color headerColor;
